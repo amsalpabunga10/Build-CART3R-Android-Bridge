@@ -126,10 +126,11 @@ private fun BridgeDashboard() {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
             Column {
                 Text("CART3R", color = Crimson, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                Text("DEVELOPER · NOVVAAA", color = Muted, fontSize = 9.sp, fontWeight = FontWeight.Bold)
                 Text("ANDROID BRIDGE", color = Color.White, fontSize = 25.sp, fontWeight = FontWeight.Black)
-                Text("PHASE 2 · ROOT ENGINE", color = Muted, fontSize = 10.sp, letterSpacing = 1.4.sp)
+                Text("PHASE 3 · SYSTEM CONTROLLER", color = Muted, fontSize = 10.sp, letterSpacing = 1.4.sp)
             }
-            StatusPill("PHASE 2")
+            StatusPill("PHASE 3")
         }
 
         PanelCard("DEVICE OVERVIEW") {
@@ -148,7 +149,7 @@ private fun BridgeDashboard() {
                 if (busy) CircularProgressIndicator(color = Crimson) else StatusPill(if (rootCheck.granted) "ROOT ACTIVE" else "NOT READY")
             }
             Text(rootCheck.detail, color = Muted, fontSize = 11.sp)
-            Text("Root command terbatas pada pemeriksaan identitas dan pembacaan data diagnostik.", color = Muted, fontSize = 10.sp)
+            Text("Root command dibatasi pada diagnostik dan operasi terpilih yang memerlukan konfirmasi lokal.", color = Muted, fontSize = 10.sp)
         }
 
         PanelCard("LIVE DIAGNOSTICS") {
@@ -171,13 +172,28 @@ private fun BridgeDashboard() {
             audit.forEach { Text("• $it", color = Muted, fontSize = 11.sp) }
         }
 
+        PanelCard("SYSTEM CONTROLLER · CONTROLLED WRITE") {
+            Text("Developer: Novvaaa", color = Color.White, fontWeight = FontWeight.SemiBold)
+            Text(
+                "Panel kontrol disiapkan. Operasi WRITE belum diaktifkan pada build ini. " +
+                "Sebelum fitur perubahan sistem tersedia, CART3R harus menampilkan target, dampak, " +
+                "backup/pemulihan, dan meminta persetujuan langsung di perangkat.",
+                color = Muted, fontSize = 11.sp
+            )
+            Text(
+                "Batas keamanan: tidak ada penghapusan bloatware otomatis, tidak ada perintah shell bebas, " +
+                "dan tidak ada eksekusi jarak jauh dari ChatGPT pada versi ini.",
+                color = Amber, fontSize = 10.sp
+            )
+        }
+
         Button(
             onClick = { refreshToken++ },
             enabled = !busy,
             modifier = Modifier.fillMaxWidth(),
             colors = ButtonDefaults.buttonColors(containerColor = Crimson)
         ) { Text(if (busy) "SCANNING…" else "REFRESH DIAGNOSTICS") }
-        Text("SECURITY: fixed read-only commands only · no arbitrary shell input · no network endpoint · no system writes", color = Muted, fontSize = 10.sp)
+        Text("SECURITY: fixed operations only · local approval required · no arbitrary shell input · no remote execution", color = Muted, fontSize = 10.sp)
         Spacer(Modifier.height(8.dp))
     }
 }
