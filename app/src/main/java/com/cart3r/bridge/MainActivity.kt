@@ -1,4 +1,3 @@
-
 package com.cart3r.bridge
 
 import android.os.Build
@@ -96,40 +95,25 @@ private fun BridgeDashboard() {
     var rootCheck by remember {
         mutableStateOf(RootCheck(false, false, "Belum diperiksa"))
     }
-
-    var report by remember {
-        mutableStateOf(DiagnosticReport())
-    }
-
+    var report by remember { mutableStateOf(DiagnosticReport()) }
     var busy by remember { mutableStateOf(true) }
     var refreshToken by remember { mutableStateOf(0) }
-
-    var endpoint by remember {
-        mutableStateOf("")
-    }
-
+    var endpoint by remember { mutableStateOf("") }
     var connectionState by remember {
         mutableStateOf(ConnectionState.DISCONNECTED)
     }
-
     var connectionMessage by remember {
         mutableStateOf("Backend belum dikonfigurasi")
     }
-
     var syncMessage by remember {
         mutableStateOf("Belum ada sinkronisasi")
     }
-
-    var networkBusy by remember {
-        mutableStateOf(false)
-    }
-
+    var networkBusy by remember { mutableStateOf(false) }
     var audit by remember {
         mutableStateOf(listOf("NOVVA BRIDGE dimulai"))
     }
 
     val scope = rememberCoroutineScope()
-
     val model = Build.MODEL ?: "Unknown"
     val manufacturer = Build.MANUFACTURER ?: "Unknown"
     val device = Build.DEVICE ?: "Unknown"
@@ -147,28 +131,21 @@ private fun BridgeDashboard() {
             "HH:mm:ss",
             Locale.getDefault()
         ).format(Date())
-
         audit = (listOf("$stamp · $message") + audit).take(15)
     }
 
     suspend fun refreshDiagnostics() {
         busy = true
-
         val result = withContext(Dispatchers.IO) {
             val root = checkKernelSuRoot()
-
             root to if (root.granted) {
                 collectReadOnlyDiagnostics()
             } else {
-                DiagnosticReport(
-                    error = "Akses root belum tersedia"
-                )
+                DiagnosticReport(error = "Akses root belum tersedia")
             }
         }
-
         rootCheck = result.first
         report = result.second
-
         addAudit(
             if (report.success) {
                 "Pemeriksaan diagnostik berhasil"
@@ -176,20 +153,17 @@ private fun BridgeDashboard() {
                 "Pemeriksaan diagnostik gagal"
             }
         )
-
         busy = false
     }
 
     suspend fun connectBackend() {
         val base = endpoint.trim().trimEnd('/')
-
         if (!base.startsWith("https://")) {
             connectionState = ConnectionState.ERROR
             connectionMessage = "Gunakan alamat HTTPS yang valid"
             addAudit("Koneksi ditolak: endpoint tidak aman")
             return
         }
-
         if (base.contains("YOUR-WORKER") || base.isBlank()) {
             connectionState = ConnectionState.ERROR
             connectionMessage = "Masukkan URL Cloudflare Worker"
@@ -199,15 +173,9 @@ private fun BridgeDashboard() {
         networkBusy = true
         connectionState = ConnectionState.CONNECTING
         connectionMessage = "Menghubungkan ke backend..."
-
         val result = withContext(Dispatchers.IO) {
-            backendRequest(
-                base = base,
-                path = "/health",
-                method = "GET"
-            )
+            backendRequest(base, "/health", "GET")
         }
-
         networkBusy = false
 
         if (result.first) {
@@ -223,7 +191,6 @@ private fun BridgeDashboard() {
 
     suspend fun syncDiagnostics() {
         val base = endpoint.trim().trimEnd('/')
-
         if (!base.startsWith("https://") ||
             base.contains("YOUR-WORKER") ||
             base.isBlank()
@@ -231,7 +198,6 @@ private fun BridgeDashboard() {
             syncMessage = "Konfigurasikan URL backend terlebih dahulu"
             return
         }
-
         if (!report.success) {
             syncMessage = "Jalankan diagnostik terlebih dahulu"
             return
@@ -239,7 +205,6 @@ private fun BridgeDashboard() {
 
         networkBusy = true
         syncMessage = "Mengirim diagnostik..."
-
         val payload = JSONObject().apply {
             put("device", JSONObject().apply {
                 put("manufacturer", manufacturer)
@@ -249,12 +214,10 @@ private fun BridgeDashboard() {
                 put("android", androidVersion)
                 put("sdk", sdk)
             })
-
             put("root", JSONObject().apply {
                 put("available", rootCheck.available)
                 put("granted", rootCheck.granted)
             })
-
             put("diagnostics", JSONObject().apply {
                 put("capturedAt", report.capturedAt)
                 put("kernel", report.kernel)
@@ -275,7 +238,6 @@ private fun BridgeDashboard() {
                 body = payload.toString()
             )
         }
-
         networkBusy = false
 
         if (result.first) {
@@ -299,9 +261,6 @@ private fun BridgeDashboard() {
             .padding(20.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
-
-        // HEADER
-
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
@@ -314,21 +273,18 @@ private fun BridgeDashboard() {
                     fontSize = 14.sp,
                     fontWeight = FontWeight.Black
                 )
-
                 Text(
                     "DEVELOPER · NOVVAAA",
                     color = Muted,
                     fontSize = 9.sp,
                     fontWeight = FontWeight.Bold
                 )
-
                 Text(
                     "BRIDGE",
                     color = Color.White,
                     fontSize = 29.sp,
                     fontWeight = FontWeight.Black
                 )
-
                 Text(
                     "PHASE 4 · AI BRIDGE",
                     color = Muted,
@@ -336,11 +292,8 @@ private fun BridgeDashboard() {
                     letterSpacing = 1.4.sp
                 )
             }
-
             StatusPill("PHASE 4")
         }
-
-        // DEVICE
 
         PanelCard("DEVICE OVERVIEW") {
             Text(
@@ -348,7 +301,6 @@ private fun BridgeDashboard() {
                 fontSize = 21.sp,
                 fontWeight = FontWeight.Bold
             )
-
             Text(
                 if (expectedDevice) {
                     "Target device identified"
@@ -358,7 +310,6 @@ private fun BridgeDashboard() {
                 color = if (expectedDevice) Green else Amber,
                 fontSize = 12.sp
             )
-
             InfoRow("Model", model)
             InfoRow("Device", device)
             InfoRow("Product", product)
@@ -366,20 +317,14 @@ private fun BridgeDashboard() {
             InfoRow("Build", Build.DISPLAY ?: "Unknown")
         }
 
-        // ROOT
-
         PanelCard("KERNELSU / ROOT ENGINE") {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
-                    if (rootCheck.granted) {
-                        "Root access verified"
-                    } else {
-                        "Root access unavailable"
-                    },
+                    if (rootCheck.granted) "Root access verified"
+                    else "Root access unavailable",
                     modifier = Modifier.weight(1f),
                     fontWeight = FontWeight.SemiBold
                 )
-
                 if (busy) {
                     CircularProgressIndicator(color = Crimson)
                 } else {
@@ -389,15 +334,8 @@ private fun BridgeDashboard() {
                     )
                 }
             }
-
-            Text(
-                rootCheck.detail,
-                color = Muted,
-                fontSize = 11.sp
-            )
+            Text(rootCheck.detail, color = Muted, fontSize = 11.sp)
         }
-
-        // AI CONNECTION
 
         PanelCard("AI BRIDGE · CONNECTION") {
             Text(
@@ -405,7 +343,6 @@ private fun BridgeDashboard() {
                 color = Color.White,
                 fontWeight = FontWeight.SemiBold
             )
-
             OutlinedTextField(
                 value = endpoint,
                 onValueChange = {
@@ -430,10 +367,7 @@ private fun BridgeDashboard() {
                     cursorColor = Crimson
                 )
             )
-
-            Row(
-                verticalAlignment = Alignment.CenterVertically
-            ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
                     "CONNECTION STATUS",
                     modifier = Modifier.weight(1f),
@@ -441,7 +375,6 @@ private fun BridgeDashboard() {
                     fontSize = 10.sp,
                     fontWeight = FontWeight.Bold
                 )
-
                 StatusPill(
                     when (connectionState) {
                         ConnectionState.CONNECTED -> "CONNECTED"
@@ -451,7 +384,6 @@ private fun BridgeDashboard() {
                     }
                 )
             }
-
             Text(
                 connectionMessage,
                 color = when (connectionState) {
@@ -461,11 +393,8 @@ private fun BridgeDashboard() {
                 },
                 fontSize = 11.sp
             )
-
             Button(
-                onClick = {
-                    scope.launch { connectBackend() }
-                },
+                onClick = { scope.launch { connectBackend() } },
                 enabled = !networkBusy,
                 modifier = Modifier.fillMaxWidth(),
                 colors = ButtonDefaults.buttonColors(
@@ -474,7 +403,6 @@ private fun BridgeDashboard() {
             ) {
                 Text("TEST CONNECTION")
             }
-
             Text(
                 "API key tidak disimpan di aplikasi. Koneksi memerlukan backend HTTPS yang telah dikonfigurasi.",
                 color = Muted,
@@ -482,23 +410,16 @@ private fun BridgeDashboard() {
             )
         }
 
-        // DIAGNOSTICS
-
         PanelCard("LIVE DIAGNOSTICS") {
             Text(
-                if (report.success) {
-                    "Last scan: ${report.capturedAt}"
-                } else {
-                    "Diagnostics not available"
-                },
+                if (report.success) "Last scan: ${report.capturedAt}"
+                else "Diagnostics not available",
                 color = if (report.success) Green else Amber,
                 fontSize = 11.sp
             )
-
             if (report.error.isNotBlank()) {
                 Text(report.error, color = Amber, fontSize = 11.sp)
             }
-
             DiagnosticGroup(
                 "KERNEL & UPTIME",
                 listOf(
@@ -506,28 +427,18 @@ private fun BridgeDashboard() {
                     "Uptime" to report.uptime
                 )
             )
-
             DiagnosticGroup(
                 "CPU",
-                report.cpu.mapIndexed { i, s ->
-                    "Policy $i" to s
-                }
+                report.cpu.mapIndexed { i, s -> "Policy $i" to s }
             )
-
             DiagnosticGroup(
                 "GPU · MALI",
-                report.gpu.mapIndexed { i, s ->
-                    "GPU ${i + 1}" to s
-                }
+                report.gpu.mapIndexed { i, s -> "GPU ${i + 1}" to s }
             )
-
             DiagnosticGroup(
                 "MEMORY",
-                report.memory.mapIndexed { i, s ->
-                    "Memory ${i + 1}" to s
-                }
+                report.memory.mapIndexed { i, s -> "Memory ${i + 1}" to s }
             )
-
             DiagnosticGroup(
                 "THERMAL ZONES",
                 report.thermal.mapIndexed { i, value ->
@@ -536,21 +447,13 @@ private fun BridgeDashboard() {
             )
         }
 
-        // MODULES
-
         PanelCard("KERNELSU MODULE INSPECTOR") {
             if (report.modules.isEmpty()) {
-                Text(
-                    "Belum ada data modul.",
-                    color = Muted,
-                    fontSize = 11.sp
-                )
+                Text("Belum ada data modul.", color = Muted, fontSize = 11.sp)
             }
-
             report.modules.forEach {
                 Text(it, color = Color.White, fontSize = 11.sp)
             }
-
             Text(
                 "Mode pemeriksaan hanya membaca informasi modul.",
                 color = Muted,
@@ -558,25 +461,19 @@ private fun BridgeDashboard() {
             )
         }
 
-        // SYNC
-
         PanelCard("DEVICE SYNC") {
             Text(
                 "Kirim hasil diagnostik perangkat ke backend NOVVA BRIDGE.",
                 color = Muted,
                 fontSize = 11.sp
             )
-
             Text(
                 syncMessage,
                 color = if (syncMessage.contains("berhasil")) Green else Amber,
                 fontSize = 11.sp
             )
-
             Button(
-                onClick = {
-                    scope.launch { syncDiagnostics() }
-                },
+                onClick = { scope.launch { syncDiagnostics() } },
                 enabled = !networkBusy &&
                     connectionState == ConnectionState.CONNECTED &&
                     report.success,
@@ -589,32 +486,26 @@ private fun BridgeDashboard() {
             }
         }
 
-        // CONTROLLED ACTIONS
-
         PanelCard("SYSTEM CONTROLLER · APPROVAL") {
             Text(
                 "Developer: Novvaaa",
                 color = Color.White,
                 fontWeight = FontWeight.SemiBold
             )
-
             Text(
                 "AI dapat menganalisis data diagnostik yang dikirim. " +
-                "Fitur perubahan sistem belum diaktifkan pada build ini.",
+                    "Fitur perubahan sistem belum diaktifkan pada build ini.",
                 color = Muted,
                 fontSize = 11.sp
             )
-
             Text(
                 "Setiap tindakan WRITE di masa depan wajib memiliki daftar izin, " +
-                "target yang jelas, penjelasan dampak, persetujuan lokal, " +
-                "dan mekanisme pemulihan.",
+                    "target yang jelas, penjelasan dampak, persetujuan lokal, " +
+                    "dan mekanisme pemulihan.",
                 color = Amber,
                 fontSize = 10.sp
             )
         }
-
-        // AUDIT
 
         PanelCard("AUDIT LOG") {
             audit.forEach {
@@ -630,9 +521,7 @@ private fun BridgeDashboard() {
                 containerColor = Crimson
             )
         ) {
-            Text(
-                if (busy) "SCANNING..." else "REFRESH DIAGNOSTICS"
-            )
+            Text(if (busy) "SCANNING..." else "REFRESH DIAGNOSTICS")
         }
 
         Text(
@@ -640,7 +529,6 @@ private fun BridgeDashboard() {
             color = Muted,
             fontSize = 9.sp
         )
-
         Spacer(Modifier.height(8.dp))
     }
 }
@@ -656,10 +544,8 @@ private fun backendRequest(
     body: String? = null
 ): Pair<Boolean, String> {
     var connection: HttpURLConnection? = null
-
     return try {
         val url = URL(base.trimEnd('/') + path)
-
         if (url.protocol != "https") {
             return false to "HTTPS wajib digunakan"
         }
@@ -668,10 +554,7 @@ private fun backendRequest(
         connection.requestMethod = method
         connection.connectTimeout = 12000
         connection.readTimeout = 12000
-        connection.setRequestProperty(
-            "Accept",
-            "application/json"
-        )
+        connection.setRequestProperty("Accept", "application/json")
 
         if (method == "POST" && body != null) {
             connection.doOutput = true
@@ -679,13 +562,273 @@ private fun backendRequest(
                 "Content-Type",
                 "application/json; charset=utf-8"
             )
-
             connection.outputStream.use {
                 it.write(body.toByteArray(Charsets.UTF_8))
             }
         }
 
         val code = connection.responseCode
-
         val stream = if (code in 200..299) {
-  
+            connection.inputStream
+        } else {
+            connection.errorStream
+        }
+        val response = stream?.use { input ->
+            BufferedReader(InputStreamReader(input)).use {
+                it.readText()
+            }
+        }.orEmpty()
+
+        if (code in 200..299) {
+            true to if (response.isBlank()) "HTTP $code" else response.take(500)
+        } else {
+            false to "HTTP $code: " +
+                response.ifBlank { "Permintaan ditolak" }.take(350)
+        }
+    } catch (e: Exception) {
+        false to (e.message ?: "Koneksi backend gagal")
+    } finally {
+        connection?.disconnect()
+    }
+}
+
+// --------------------------------------------------
+// ROOT & READ-ONLY DIAGNOSTICS
+// --------------------------------------------------
+
+private fun runRootRead(command: String): String {
+    return try {
+        val process = ProcessBuilder("su", "-c", command)
+            .redirectErrorStream(true)
+            .start()
+        val output = process.inputStream.bufferedReader().use {
+            it.readText()
+        }
+        if (!process.waitFor(10, TimeUnit.SECONDS)) {
+            process.destroyForcibly()
+            "Timeout"
+        } else if (process.exitValue() == 0) {
+            output.trim()
+        } else {
+            output.trim().ifBlank {
+                "Perintah gagal (${process.exitValue()})"
+            }
+        }
+    } catch (e: Exception) {
+        "Error: ${e.message ?: "root command gagal"}"
+    }
+}
+
+private fun checkKernelSuRoot(): RootCheck {
+    return try {
+        val process = ProcessBuilder("su", "-c", "id")
+            .redirectErrorStream(true)
+            .start()
+        val output = process.inputStream.bufferedReader().use {
+            it.readText()
+        }
+        if (!process.waitFor(10, TimeUnit.SECONDS)) {
+            process.destroyForcibly()
+            RootCheck(true, false, "Pemeriksaan root timeout")
+        } else {
+            val granted = process.exitValue() == 0 &&
+                output.contains("uid=0")
+            RootCheck(
+                available = true,
+                granted = granted,
+                detail = if (granted) {
+                    "KernelSU memberikan akses root"
+                } else {
+                    output.trim().ifBlank {
+                        "Akses root belum diberikan"
+                    }
+                }
+            )
+        }
+    } catch (e: Exception) {
+        RootCheck(
+            available = false,
+            granted = false,
+            detail = e.message ?: "Binary su tidak dapat dijalankan"
+        )
+    }
+}
+
+private fun collectReadOnlyDiagnostics(): DiagnosticReport {
+    val kernel = runRootRead("uname -r")
+    val uptimeRaw = runRootRead("cat /proc/uptime").substringBefore(" ")
+    val uptime = uptimeRaw.toDoubleOrNull()?.toLong()?.let {
+        val days = it / 86400
+        val hours = (it % 86400) / 3600
+        val minutes = (it % 3600) / 60
+        "${days}d ${hours}h ${minutes}m"
+    } ?: "Tidak tersedia"
+
+    val cpu = runRootRead(
+        """for p in /sys/devices/system/cpu/cpufreq/policy*; do
+            [ -d "$p" ] || continue
+            echo "$(basename "$p"): min=$(cat "$p/scaling_min_freq" 2>/dev/null) max=$(cat "$p/scaling_max_freq" 2>/dev/null) cur=$(cat "$p/scaling_cur_freq" 2>/dev/null)"
+        done"""
+    )
+    val gpu = runRootRead(
+        """p=/sys/class/devfreq/23100000.gpu
+        if [ -d "$p" ]; then
+            echo "governor=$(cat "$p/governor" 2>/dev/null)"
+            echo "min=$(cat "$p/min_freq" 2>/dev/null)"
+            echo "max=$(cat "$p/max_freq" 2>/dev/null)"
+            echo "current=$(cat "$p/cur_freq" 2>/dev/null)"
+        else
+            echo "GPU sysfs tidak ditemukan"
+        fi"""
+    )
+    val memory = runRootRead(
+        "grep -E '^(MemTotal|MemAvailable|MemFree|SwapTotal|SwapFree):' /proc/meminfo"
+    )
+    val thermal = runRootRead(
+        """for z in /sys/class/thermal/thermal_zone*; do
+            [ -d "$z" ] || continue
+            n=$(cat "$z/type" 2>/dev/null)
+            t=$(cat "$z/temp" 2>/dev/null)
+            [ -n "$n" ] && echo "$n: $t"
+        done | head -30"""
+    )
+    val modules = runRootRead(
+        """for m in /data/adb/modules/*; do
+            [ -d "$m" ] || continue
+            if [ -f "$m/module.prop" ]; then
+                n=$(grep -m1 '^name=' "$m/module.prop" | cut -d= -f2-)
+                echo "$n [$(basename "$m")]"
+            else
+                basename "$m"
+            fi
+        done | head -50"""
+    )
+
+    fun lines(value: String): List<String> {
+        return value.lines()
+            .map { it.trim() }
+            .filter { it.isNotBlank() }
+    }
+
+    val valid = kernel.isNotBlank() &&
+        !kernel.startsWith("Error:") &&
+        !kernel.startsWith("Perintah gagal")
+
+    return DiagnosticReport(
+        success = valid,
+        capturedAt = SimpleDateFormat(
+            "yyyy-MM-dd HH:mm:ss",
+            Locale.getDefault()
+        ).format(Date()),
+        kernel = kernel.ifBlank { "Tidak tersedia" },
+        uptime = uptime,
+        cpu = lines(cpu),
+        gpu = lines(gpu),
+        memory = lines(memory),
+        thermal = lines(thermal),
+        modules = lines(modules),
+        error = if (valid) "" else "Data diagnostik tidak dapat dibaca"
+    )
+}
+
+// --------------------------------------------------
+// REUSABLE UI COMPONENTS
+// --------------------------------------------------
+
+@Composable
+private fun StatusPill(label: String) {
+    val tint = when {
+        label.contains("ACTIVE") ||
+            label.contains("CONNECTED") ||
+            label.contains("PHASE") -> Green
+        label.contains("ERROR") ||
+            label.contains("NOT READY") -> Amber
+        else -> Muted
+    }
+
+    Surface(
+        color = tint.copy(alpha = 0.14f),
+        shape = RoundedCornerShape(50)
+    ) {
+        Text(
+            label,
+            modifier = Modifier.padding(
+                horizontal = 10.dp,
+                vertical = 6.dp
+            ),
+            color = tint,
+            fontSize = 9.sp,
+            fontWeight = FontWeight.Bold
+        )
+    }
+}
+
+@Composable
+private fun PanelCard(
+    title: String,
+    content: @Composable ColumnScope.() -> Unit
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(18.dp),
+        colors = CardDefaults.cardColors(containerColor = Panel)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Text(
+                title,
+                color = Crimson,
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Black,
+                letterSpacing = 1.sp
+            )
+            content()
+        }
+    }
+}
+
+@Composable
+private fun InfoRow(label: String, value: String) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.Top
+    ) {
+        Text(label, color = Muted, fontSize = 11.sp)
+        Text(
+            value,
+            color = Color.White,
+            fontSize = 11.sp,
+            fontWeight = FontWeight.Medium
+        )
+    }
+}
+
+@Composable
+private fun DiagnosticGroup(
+    title: String,
+    values: List<Pair<String, String>>
+) {
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(5.dp)
+    ) {
+        Text(
+            title,
+            color = Crimson,
+            fontSize = 10.sp,
+            fontWeight = FontWeight.Bold
+        )
+        if (values.isEmpty()) {
+            Text("Data tidak tersedia", color = Muted, fontSize = 10.sp)
+        } else {
+            values.forEach { (label, value) ->
+                InfoRow(label, value.ifBlank { "—" })
+            }
+        }
+    }
+}
