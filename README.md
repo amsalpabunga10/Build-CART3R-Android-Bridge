@@ -1,49 +1,35 @@
-# CART3R Android Bridge — Phase 1
+# CART3R Android Bridge — Phase 3
+**Developer / project owner: Novvaaa**
 
-Android companion foundation for **Realme C71 RMX5303 / Android 16**.
+Phase 3 carries forward the Phase 2 project for Realme C71 RMX5303 / Android 16.
+The package ID remains `com.cart3r.bridge`; the dashboard retains the dark crimson
+visual style and the existing KernelSU diagnostic implementation.
 
-## Phase 1 features
+## Included
+- Phase 2 diagnostics retained: CPU, Mali GPU, memory, thermal zones, kernel, uptime and KernelSU modules.
+- Dashboard identifies the developer as **Novvaaa**.
+- Phase 3 System Controller panel documents the controlled-write boundary.
+- Version updated to 3.0.0 (versionCode 3).
 
-- Dark crimson Jetpack Compose dashboard.
-- Device model, manufacturer, device/product identifiers, Android version and build fingerprint.
-- KernelSU/root availability check using only `su -c id`.
-- No arbitrary shell input, remote command endpoint, or system modifications.
+## Important implementation status
+This build is a **Phase 3 foundation / controller shell**, not full remote root control.
+It does not yet disable, uninstall, or modify applications, modules, CPU/GPU settings,
+or system files. The panel deliberately does not expose arbitrary shell input.
+A later implementation must add a package inventory, protected-package safeguards,
+a local confirmation screen, operation-specific allowlists, audit records, and rollback.
+ChatGPT does not have direct access to the phone from this APK; an authenticated AI Bridge
+would be a separate future component.
 
-The root check can trigger the KernelSU superuser approval dialog. Approve it only if you trust this APK. Denying it does not affect normal dashboard functionality.
+## Safety model
+- Root checks and diagnostics use fixed, app-authored commands.
+- No network listener or remote command endpoint.
+- No arbitrary command entry.
+- No system write is performed by this build.
+- Any future write operation must be individually allowlisted and confirmed locally.
 
-## Build with GitHub Actions
+## Build
+Use JDK 17 and Gradle 8.9:
+`gradle --no-daemon :app:assembleDebug`
 
-1. Create a GitHub repository.
-2. Upload the contents of this ZIP to the repository root.
-3. Push to `main` or `master`, or open **Actions → Build CART3R Android Bridge → Run workflow**.
-4. Download the `CART3R-Bridge-debug` artifact from the completed workflow.
-5. Extract `app-debug.apk` and install it on the device.
-
-## Build locally
-
-Requirements: JDK 17 and Gradle 8.9.
-
-```bash
-gradle :app:assembleDebug
-```
-
-APK output:
-
-```text
-app/build/outputs/apk/debug/app-debug.apk
-```
-
-## Technical details
-
-- Application ID: `com.cart3r.bridge`
-- Version: `1.0.0` (versionCode 1)
-- minSdk: 26
-- targetSdk: 35
-- compileSdk: 35
-- Kotlin 2.0.21
-- Android Gradle Plugin 8.7.3
-- Gradle 8.9
-
-## Security notes
-
-This is a diagnostic companion, not a remote root shell. Phase 1 does not include a network listener, AI command execution, or write access to protected system paths. Later phases should add a fixed operation registry, strict argument validation, explicit on-device confirmation, audit logging, and rollback support before introducing any system-changing action.
+GitHub Actions workflow: `.github/workflows/build.yml`.
+Artifact output: `app/build/outputs/apk/debug/app-debug.apk`.
