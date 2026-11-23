@@ -1,9 +1,11 @@
 
-name: Build CART3R Android Bridge Phase 2
+name: CART3R Android Bridge Phase 2
 
 on:
   push:
-    branches: ["main", "master"]
+    branches:
+      - main
+      - master
   workflow_dispatch:
 
 permissions:
@@ -11,30 +13,38 @@ permissions:
 
 jobs:
   build:
+    name: Build CART3R APK
     runs-on: ubuntu-latest
+
     steps:
-      - name: Checkout source
+      - name: Checkout Repository
         uses: actions/checkout@v4
 
-      - name: Set up JDK 17
+      - name: Setup JDK 17
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '17'
 
-      - name: Set up Gradle
+      - name: Setup Gradle 8.9
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.9'
 
-      - name: Extract Phase 2
-        run: unzip -o CART3R-Android-Bridge-Phase2.zip -d .
+      - name: Verify Source Files
+        run: |
+          test -f app/src/main/AndroidManifest.xml
+          test -f app/src/main/java/com/cart3r/bridge/MainActivity.kt
+          echo "CART3R source files found"
 
-      - name: Build APK
+      - name: Build Debug APK
         run: gradle --no-daemon :app:assembleDebug
 
-      - name: Upload APK
+      - name: Upload Debug APK
         uses: actions/upload-artifact@v4
         with:
           name: CART3R-Bridge-Phase2-debug
           path: app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+          retention-days: 7
+          
