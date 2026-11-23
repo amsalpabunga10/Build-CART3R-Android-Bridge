@@ -1,9 +1,9 @@
-name: Build CART3R Android Bridge
+
+name: Build CART3R Android Bridge Phase 2
 
 on:
   push:
-    branches: [ "main", "master" ]
-  pull_request:
+    branches: ["main", "master"]
   workflow_dispatch:
 
 permissions:
@@ -27,14 +27,14 @@ jobs:
         with:
           gradle-version: '8.9'
 
-      - name: Build debug APK
+      - name: Extract Phase 2
+        run: unzip -o CART3R-Android-Bridge-Phase2.zip -d .
+
+      - name: Build APK
         run: gradle --no-daemon :app:assembleDebug
 
-      - name: Upload debug APK
+      - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: CART3R-Bridge-debug
+          name: CART3R-Bridge-Phase2-debug
           path: app/build/outputs/apk/debug/app-debug.apk
-          if-no-files-found: error
-          retention-days: 14
-          
