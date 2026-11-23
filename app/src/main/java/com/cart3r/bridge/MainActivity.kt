@@ -1,3 +1,4 @@
+
 package com.cart3r.bridge
 
 import android.os.Build
@@ -5,32 +6,12 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
-import androidx.compose.material3.Text
-import androidx.compose.material3.darkColorScheme
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -38,9 +19,14 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import org.json.JSONArray
+import org.json.JSONObject
 import java.io.BufferedReader
 import java.io.InputStreamReader
+import java.net.HttpURLConnection
+import java.net.URL
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -57,16 +43,21 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent {
-            MaterialTheme(colorScheme = darkColorScheme(
-                primary = Crimson,
-                secondary = Color(0xFFFF7182),
-                background = Background,
-                surface = Panel,
-                onPrimary = Color.White,
-                onBackground = Color.White,
-                onSurface = Color.White
-            )) {
-                Surface(modifier = Modifier.fillMaxSize(), color = Background) {
+            MaterialTheme(
+                colorScheme = darkColorScheme(
+                    primary = Crimson,
+                    secondary = Color(0xFFFF7182),
+                    background = Background,
+                    surface = Panel,
+                    onPrimary = Color.White,
+                    onBackground = Color.White,
+                    onSurface = Color.White
+                )
+            ) {
+                Surface(
+                    modifier = Modifier.fillMaxSize(),
+                    color = Background
+                ) {
                     BridgeDashboard()
                 }
             }
@@ -74,7 +65,12 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-private data class RootCheck(val available: Boolean, val granted: Boolean, val detail: String)
+private data class RootCheck(
+    val available: Boolean,
+    val granted: Boolean,
+    val detail: String
+)
+
 private data class DiagnosticReport(
     val success: Boolean = false,
     val capturedAt: String = "Belum diperiksa",
@@ -88,13 +84,51 @@ private data class DiagnosticReport(
     val error: String = ""
 )
 
-@androidx.compose.runtime.Composable
+private enum class ConnectionState {
+    DISCONNECTED,
+    CONNECTING,
+    CONNECTED,
+    ERROR
+}
+
+@Composable
 private fun BridgeDashboard() {
-    var rootCheck by remember { mutableStateOf(RootCheck(false, false, "Belum diperiksa")) }
-    var report by remember { mutableStateOf(DiagnosticReport()) }
+    var rootCheck by remember {
+        mutableStateOf(RootCheck(false, false, "Belum diperiksa"))
+    }
+
+    var report by remember {
+        mutableStateOf(DiagnosticReport())
+    }
+
     var busy by remember { mutableStateOf(true) }
     var refreshToken by remember { mutableStateOf(0) }
-    var audit by remember { mutableStateOf(listOf("Aplikasi dimulai")) }
+
+    var endpoint by remember {
+        mutableStateOf("")
+    }
+
+    var connectionState by remember {
+        mutableStateOf(ConnectionState.DISCONNECTED)
+    }
+
+    var connectionMessage by remember {
+        mutableStateOf("Backend belum dikonfigurasi")
+    }
+
+    var syncMessage by remember {
+        mutableStateOf("Belum ada sinkronisasi")
+    }
+
+    var networkBusy by remember {
+        mutableStateOf(false)
+    }
+
+    var audit by remember {
+        mutableStateOf(listOf("NOVVA BRIDGE dimulai"))
+    }
+
+    val scope = rememberCoroutineScope()
 
     val model = Build.MODEL ?: "Unknown"
     val manufacturer = Build.MANUFACTURER ?: "Unknown"
@@ -102,40 +136,229 @@ private fun BridgeDashboard() {
     val product = Build.PRODUCT ?: "Unknown"
     val androidVersion = Build.VERSION.RELEASE ?: "Unknown"
     val sdk = Build.VERSION.SDK_INT
-    val expectedDevice = model.equals("RMX5303", true) || product.contains("RMX5303", true) || device.contains("RMX5303", true)
+
+    val expectedDevice =
+        model.equals("RMX5303", true) ||
+        product.contains("RMX5303", true) ||
+        device.contains("RMX5303", true)
+
+    fun addAudit(message: String) {
+        val stamp = SimpleDateFormat(
+            "HH:mm:ss",
+            Locale.getDefault()
+        ).format(Date())
+
+        audit = (listOf("$stamp · $message") + audit).take(15)
+    }
 
     suspend fun refreshDiagnostics() {
         busy = true
+
         val result = withContext(Dispatchers.IO) {
             val root = checkKernelSuRoot()
-            root to if (root.granted) collectReadOnlyDiagnostics() else DiagnosticReport(error = "Akses root belum tersedia")
+
+            root to if (root.granted) {
+                collectReadOnlyDiagnostics()
+            } else {
+                DiagnosticReport(
+                    error = "Akses root belum tersedia"
+                )
+            }
         }
+
         rootCheck = result.first
         report = result.second
-        val stamp = SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date())
-        audit = (listOf("$stamp · Pemeriksaan diagnostik ${if (report.success) "berhasil" else "gagal"}") + audit).take(12)
+
+        addAudit(
+            if (report.success) {
+                "Pemeriksaan diagnostik berhasil"
+            } else {
+                "Pemeriksaan diagnostik gagal"
+            }
+        )
+
         busy = false
     }
 
-    LaunchedEffect(refreshToken) { refreshDiagnostics() }
+    suspend fun connectBackend() {
+        val base = endpoint.trim().trimEnd('/')
 
-    Column(
-        modifier = Modifier.fillMaxSize().background(Background).verticalScroll(rememberScrollState()).padding(20.dp),
-        verticalArrangement = Arrangement.spacedBy(14.dp)
-    ) {
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-            Column {
-                Text("CART3R", color = Crimson, fontSize = 13.sp, fontWeight = FontWeight.Bold)
-                Text("DEVELOPER · NOVVAAA", color = Muted, fontSize = 9.sp, fontWeight = FontWeight.Bold)
-                Text("ANDROID BRIDGE", color = Color.White, fontSize = 25.sp, fontWeight = FontWeight.Black)
-                Text("PHASE 3 · SYSTEM CONTROLLER", color = Muted, fontSize = 10.sp, letterSpacing = 1.4.sp)
-            }
-            StatusPill("PHASE 3")
+        if (!base.startsWith("https://")) {
+            connectionState = ConnectionState.ERROR
+            connectionMessage = "Gunakan alamat HTTPS yang valid"
+            addAudit("Koneksi ditolak: endpoint tidak aman")
+            return
         }
 
+        if (base.contains("YOUR-WORKER") || base.isBlank()) {
+            connectionState = ConnectionState.ERROR
+            connectionMessage = "Masukkan URL Cloudflare Worker"
+            return
+        }
+
+        networkBusy = true
+        connectionState = ConnectionState.CONNECTING
+        connectionMessage = "Menghubungkan ke backend..."
+
+        val result = withContext(Dispatchers.IO) {
+            backendRequest(
+                base = base,
+                path = "/health",
+                method = "GET"
+            )
+        }
+
+        networkBusy = false
+
+        if (result.first) {
+            connectionState = ConnectionState.CONNECTED
+            connectionMessage = "Backend berhasil dijangkau"
+            addAudit("Backend berhasil dihubungi")
+        } else {
+            connectionState = ConnectionState.ERROR
+            connectionMessage = result.second
+            addAudit("Koneksi backend gagal")
+        }
+    }
+
+    suspend fun syncDiagnostics() {
+        val base = endpoint.trim().trimEnd('/')
+
+        if (!base.startsWith("https://") ||
+            base.contains("YOUR-WORKER") ||
+            base.isBlank()
+        ) {
+            syncMessage = "Konfigurasikan URL backend terlebih dahulu"
+            return
+        }
+
+        if (!report.success) {
+            syncMessage = "Jalankan diagnostik terlebih dahulu"
+            return
+        }
+
+        networkBusy = true
+        syncMessage = "Mengirim diagnostik..."
+
+        val payload = JSONObject().apply {
+            put("device", JSONObject().apply {
+                put("manufacturer", manufacturer)
+                put("model", model)
+                put("device", device)
+                put("product", product)
+                put("android", androidVersion)
+                put("sdk", sdk)
+            })
+
+            put("root", JSONObject().apply {
+                put("available", rootCheck.available)
+                put("granted", rootCheck.granted)
+            })
+
+            put("diagnostics", JSONObject().apply {
+                put("capturedAt", report.capturedAt)
+                put("kernel", report.kernel)
+                put("uptime", report.uptime)
+                put("cpu", JSONArray(report.cpu))
+                put("gpu", JSONArray(report.gpu))
+                put("memory", JSONArray(report.memory))
+                put("thermal", JSONArray(report.thermal))
+                put("modules", JSONArray(report.modules))
+            })
+        }
+
+        val result = withContext(Dispatchers.IO) {
+            backendRequest(
+                base = base,
+                path = "/api/diagnostics",
+                method = "POST",
+                body = payload.toString()
+            )
+        }
+
+        networkBusy = false
+
+        if (result.first) {
+            syncMessage = "Diagnostik berhasil dikirim"
+            addAudit("Diagnostik berhasil disinkronkan")
+        } else {
+            syncMessage = result.second
+            addAudit("Sinkronisasi diagnostik gagal")
+        }
+    }
+
+    LaunchedEffect(refreshToken) {
+        refreshDiagnostics()
+    }
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Background)
+            .verticalScroll(rememberScrollState())
+            .padding(20.dp),
+        verticalArrangement = Arrangement.spacedBy(14.dp)
+    ) {
+
+        // HEADER
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column {
+                Text(
+                    "NOVVA",
+                    color = Crimson,
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.Black
+                )
+
+                Text(
+                    "DEVELOPER · NOVVAAA",
+                    color = Muted,
+                    fontSize = 9.sp,
+                    fontWeight = FontWeight.Bold
+                )
+
+                Text(
+                    "BRIDGE",
+                    color = Color.White,
+                    fontSize = 29.sp,
+                    fontWeight = FontWeight.Black
+                )
+
+                Text(
+                    "PHASE 4 · AI BRIDGE",
+                    color = Muted,
+                    fontSize = 10.sp,
+                    letterSpacing = 1.4.sp
+                )
+            }
+
+            StatusPill("PHASE 4")
+        }
+
+        // DEVICE
+
         PanelCard("DEVICE OVERVIEW") {
-            Text("$manufacturer $model", fontSize = 21.sp, fontWeight = FontWeight.Bold)
-            Text(if (expectedDevice) "Target device identified" else "Device detected · target model not confirmed", color = if (expectedDevice) Green else Amber, fontSize = 12.sp)
+            Text(
+                "$manufacturer $model",
+                fontSize = 21.sp,
+                fontWeight = FontWeight.Bold
+            )
+
+            Text(
+                if (expectedDevice) {
+                    "Target device identified"
+                } else {
+                    "Device detected · target not confirmed"
+                },
+                color = if (expectedDevice) Green else Amber,
+                fontSize = 12.sp
+            )
+
             InfoRow("Model", model)
             InfoRow("Device", device)
             InfoRow("Product", product)
@@ -143,172 +366,326 @@ private fun BridgeDashboard() {
             InfoRow("Build", Build.DISPLAY ?: "Unknown")
         }
 
+        // ROOT
+
         PanelCard("KERNELSU / ROOT ENGINE") {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(if (rootCheck.granted) "Root access verified" else "Root access unavailable", Modifier.weight(1f), fontWeight = FontWeight.SemiBold)
-                if (busy) CircularProgressIndicator(color = Crimson) else StatusPill(if (rootCheck.granted) "ROOT ACTIVE" else "NOT READY")
+                Text(
+                    if (rootCheck.granted) {
+                        "Root access verified"
+                    } else {
+                        "Root access unavailable"
+                    },
+                    modifier = Modifier.weight(1f),
+                    fontWeight = FontWeight.SemiBold
+                )
+
+                if (busy) {
+                    CircularProgressIndicator(color = Crimson)
+                } else {
+                    StatusPill(
+                        if (rootCheck.granted) "ROOT ACTIVE"
+                        else "NOT READY"
+                    )
+                }
             }
-            Text(rootCheck.detail, color = Muted, fontSize = 11.sp)
-            Text("Root command dibatasi pada diagnostik dan operasi terpilih yang memerlukan konfirmasi lokal.", color = Muted, fontSize = 10.sp)
+
+            Text(
+                rootCheck.detail,
+                color = Muted,
+                fontSize = 11.sp
+            )
         }
+
+        // AI CONNECTION
+
+        PanelCard("AI BRIDGE · CONNECTION") {
+            Text(
+                "Backend endpoint",
+                color = Color.White,
+                fontWeight = FontWeight.SemiBold
+            )
+
+            OutlinedTextField(
+                value = endpoint,
+                onValueChange = {
+                    endpoint = it
+                    connectionState = ConnectionState.DISCONNECTED
+                    connectionMessage = "Endpoint berubah"
+                },
+                modifier = Modifier.fillMaxWidth(),
+                placeholder = {
+                    Text(
+                        "https://your-worker.workers.dev",
+                        color = Muted
+                    )
+                },
+                singleLine = true,
+                enabled = !networkBusy,
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedBorderColor = Crimson,
+                    unfocusedBorderColor = Muted,
+                    focusedTextColor = Color.White,
+                    unfocusedTextColor = Color.White,
+                    cursorColor = Crimson
+                )
+            )
+
+            Row(
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    "CONNECTION STATUS",
+                    modifier = Modifier.weight(1f),
+                    color = Muted,
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.Bold
+                )
+
+                StatusPill(
+                    when (connectionState) {
+                        ConnectionState.CONNECTED -> "CONNECTED"
+                        ConnectionState.CONNECTING -> "CONNECTING"
+                        ConnectionState.ERROR -> "ERROR"
+                        ConnectionState.DISCONNECTED -> "OFFLINE"
+                    }
+                )
+            }
+
+            Text(
+                connectionMessage,
+                color = when (connectionState) {
+                    ConnectionState.CONNECTED -> Green
+                    ConnectionState.ERROR -> Amber
+                    else -> Muted
+                },
+                fontSize = 11.sp
+            )
+
+            Button(
+                onClick = {
+                    scope.launch { connectBackend() }
+                },
+                enabled = !networkBusy,
+                modifier = Modifier.fillMaxWidth(),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = Crimson
+                )
+            ) {
+                Text("TEST CONNECTION")
+            }
+
+            Text(
+                "API key tidak disimpan di aplikasi. Koneksi memerlukan backend HTTPS yang telah dikonfigurasi.",
+                color = Muted,
+                fontSize = 10.sp
+            )
+        }
+
+        // DIAGNOSTICS
 
         PanelCard("LIVE DIAGNOSTICS") {
-            Text(if (report.success) "Last scan: ${report.capturedAt}" else "Diagnostics not available", color = if (report.success) Green else Amber, fontSize = 11.sp)
-            if (report.error.isNotBlank()) Text(report.error, color = Amber, fontSize = 11.sp)
-            DiagnosticGroup("KERNEL & UPTIME", listOf("Kernel" to report.kernel, "Uptime" to report.uptime))
-            DiagnosticGroup("CPU", report.cpu.mapIndexed { i, s -> "Policy ${i}" to s })
-            DiagnosticGroup("GPU · MALI", report.gpu.mapIndexed { i, s -> "GPU ${i + 1}" to s })
-            DiagnosticGroup("MEMORY", report.memory.mapIndexed { i, s -> "Memory ${i + 1}" to s })
-            DiagnosticGroup("THERMAL ZONES", report.thermal.mapIndexed { i, value -> "Zone ${i + 1}" to value })
+            Text(
+                if (report.success) {
+                    "Last scan: ${report.capturedAt}"
+                } else {
+                    "Diagnostics not available"
+                },
+                color = if (report.success) Green else Amber,
+                fontSize = 11.sp
+            )
+
+            if (report.error.isNotBlank()) {
+                Text(report.error, color = Amber, fontSize = 11.sp)
+            }
+
+            DiagnosticGroup(
+                "KERNEL & UPTIME",
+                listOf(
+                    "Kernel" to report.kernel,
+                    "Uptime" to report.uptime
+                )
+            )
+
+            DiagnosticGroup(
+                "CPU",
+                report.cpu.mapIndexed { i, s ->
+                    "Policy $i" to s
+                }
+            )
+
+            DiagnosticGroup(
+                "GPU · MALI",
+                report.gpu.mapIndexed { i, s ->
+                    "GPU ${i + 1}" to s
+                }
+            )
+
+            DiagnosticGroup(
+                "MEMORY",
+                report.memory.mapIndexed { i, s ->
+                    "Memory ${i + 1}" to s
+                }
+            )
+
+            DiagnosticGroup(
+                "THERMAL ZONES",
+                report.thermal.mapIndexed { i, value ->
+                    "Zone ${i + 1}" to value
+                }
+            )
         }
+
+        // MODULES
 
         PanelCard("KERNELSU MODULE INSPECTOR") {
-            if (report.modules.isEmpty()) Text("Belum ada data modul. Refresh diagnostik saat root aktif.", color = Muted, fontSize = 11.sp)
-            report.modules.forEach { Text(it, color = Color.White, fontSize = 11.sp) }
-            Text("Inspector hanya membaca /data/adb/modules dan module.prop. Tidak mengaktifkan, menonaktifkan, atau menghapus modul.", color = Muted, fontSize = 10.sp)
+            if (report.modules.isEmpty()) {
+                Text(
+                    "Belum ada data modul.",
+                    color = Muted,
+                    fontSize = 11.sp
+                )
+            }
+
+            report.modules.forEach {
+                Text(it, color = Color.White, fontSize = 11.sp)
+            }
+
+            Text(
+                "Mode pemeriksaan hanya membaca informasi modul.",
+                color = Muted,
+                fontSize = 10.sp
+            )
         }
+
+        // SYNC
+
+        PanelCard("DEVICE SYNC") {
+            Text(
+                "Kirim hasil diagnostik perangkat ke backend NOVVA BRIDGE.",
+                color = Muted,
+                fontSize = 11.sp
+            )
+
+            Text(
+                syncMessage,
+                color = if (syncMessage.contains("berhasil")) Green else Amber,
+                fontSize = 11.sp
+            )
+
+            Button(
+                onClick = {
+                    scope.launch { syncDiagnostics() }
+                },
+                enabled = !networkBusy &&
+                    connectionState == ConnectionState.CONNECTED &&
+                    report.success,
+                modifier = Modifier.fillMaxWidth(),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = Crimson
+                )
+            ) {
+                Text("SYNC DIAGNOSTICS")
+            }
+        }
+
+        // CONTROLLED ACTIONS
+
+        PanelCard("SYSTEM CONTROLLER · APPROVAL") {
+            Text(
+                "Developer: Novvaaa",
+                color = Color.White,
+                fontWeight = FontWeight.SemiBold
+            )
+
+            Text(
+                "AI dapat menganalisis data diagnostik yang dikirim. " +
+                "Fitur perubahan sistem belum diaktifkan pada build ini.",
+                color = Muted,
+                fontSize = 11.sp
+            )
+
+            Text(
+                "Setiap tindakan WRITE di masa depan wajib memiliki daftar izin, " +
+                "target yang jelas, penjelasan dampak, persetujuan lokal, " +
+                "dan mekanisme pemulihan.",
+                color = Amber,
+                fontSize = 10.sp
+            )
+        }
+
+        // AUDIT
 
         PanelCard("AUDIT LOG") {
-            audit.forEach { Text("• $it", color = Muted, fontSize = 11.sp) }
-        }
-
-        PanelCard("SYSTEM CONTROLLER · CONTROLLED WRITE") {
-            Text("Developer: Novvaaa", color = Color.White, fontWeight = FontWeight.SemiBold)
-            Text(
-                "Panel kontrol disiapkan. Operasi WRITE belum diaktifkan pada build ini. " +
-                "Sebelum fitur perubahan sistem tersedia, CART3R harus menampilkan target, dampak, " +
-                "backup/pemulihan, dan meminta persetujuan langsung di perangkat.",
-                color = Muted, fontSize = 11.sp
-            )
-            Text(
-                "Batas keamanan: tidak ada penghapusan bloatware otomatis, tidak ada perintah shell bebas, " +
-                "dan tidak ada eksekusi jarak jauh dari ChatGPT pada versi ini.",
-                color = Amber, fontSize = 10.sp
-            )
+            audit.forEach {
+                Text("• $it", color = Muted, fontSize = 11.sp)
+            }
         }
 
         Button(
             onClick = { refreshToken++ },
             enabled = !busy,
             modifier = Modifier.fillMaxWidth(),
-            colors = ButtonDefaults.buttonColors(containerColor = Crimson)
-        ) { Text(if (busy) "SCANNING…" else "REFRESH DIAGNOSTICS") }
-        Text("SECURITY: fixed operations only · local approval required · no arbitrary shell input · no remote execution", color = Muted, fontSize = 10.sp)
+            colors = ButtonDefaults.buttonColors(
+                containerColor = Crimson
+            )
+        ) {
+            Text(
+                if (busy) "SCANNING..." else "REFRESH DIAGNOSTICS"
+            )
+        }
+
+        Text(
+            "NOVVA BRIDGE · DEVELOPER NOVVAAA · PHASE 4",
+            color = Muted,
+            fontSize = 9.sp
+        )
+
         Spacer(Modifier.height(8.dp))
     }
 }
 
-@androidx.compose.runtime.Composable
-private fun PanelCard(title: String, content: @androidx.compose.runtime.Composable () -> Unit) {
-    Card(colors = CardDefaults.cardColors(containerColor = Panel), shape = RoundedCornerShape(18.dp), modifier = Modifier.fillMaxWidth()) {
-        Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
-            Text(title, color = Crimson, fontSize = 11.sp, fontWeight = FontWeight.Bold)
-            content()
-        }
-    }
-}
+// --------------------------------------------------
+// BACKEND CONNECTION
+// --------------------------------------------------
 
-@androidx.compose.runtime.Composable
-private fun StatusPill(label: String) {
-    Box(Modifier.background(Color(0xFF351019), RoundedCornerShape(50)).padding(horizontal = 11.dp, vertical = 6.dp)) {
-        Text(label, color = Color(0xFFFF8290), fontSize = 9.sp, fontWeight = FontWeight.Bold)
-    }
-}
+private fun backendRequest(
+    base: String,
+    path: String,
+    method: String,
+    body: String? = null
+): Pair<Boolean, String> {
+    var connection: HttpURLConnection? = null
 
-@androidx.compose.runtime.Composable
-private fun InfoRow(label: String, value: String) {
-    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-        Text(label, color = Muted, fontSize = 12.sp)
-        Text(value.ifBlank { "Unknown" }, color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Medium)
-    }
-}
-
-@androidx.compose.runtime.Composable
-private fun DiagnosticGroup(title: String, values: List<Pair<String, String>>) {
-    if (values.isNotEmpty()) {
-        Text(title, color = Color(0xFFFF8290), fontSize = 10.sp, fontWeight = FontWeight.Bold)
-        values.forEach { (label, value) -> InfoRow(label, value) }
-    }
-}
-
-private fun checkKernelSuRoot(): RootCheck = runFixedRootCommand("id") { output, code ->
-    val granted = code == 0 && output.contains("uid=0")
-    RootCheck(true, granted, output.ifBlank { "su tidak mengembalikan output" })
-} ?: RootCheck(false, false, "Tidak dapat menjalankan pemeriksaan root")
-
-private fun collectReadOnlyDiagnostics(): DiagnosticReport {
-    val script = """
-        echo 'KERNEL:'@(uname -r)
-        echo 'UPTIME:'@(cut -d' ' -f1 /proc/uptime 2>/dev/null)
-        for p in /sys/devices/system/cpu/cpufreq/policy*; do
-          [ -d "@p" ] || continue
-          n=@{p##*policy}
-          g=@(cat "@p/scaling_governor" 2>/dev/null)
-          c=@(cat "@p/scaling_cur_freq" 2>/dev/null)
-          lo=@(cat "@p/scaling_min_freq" 2>/dev/null)
-          hi=@(cat "@p/scaling_max_freq" 2>/dev/null)
-          echo "CPU:@n|gov=@g cur=@c min=@lo max=@hi"
-        done
-        gp=/sys/class/devfreq/23100000.gpu
-        if [ -d "@gp" ]; then
-          echo "GPU:governor=@(cat "@gp/governor" 2>/dev/null) cur=@(cat "@gp/cur_freq" 2>/dev/null) min=@(cat "@gp/min_freq" 2>/dev/null) max=@(cat "@gp/max_freq" 2>/dev/null)"
-        else echo 'GPU:unavailable'; fi
-        grep -E '^(MemTotal|MemAvailable|SwapTotal|SwapFree):' /proc/meminfo 2>/dev/null | while read k v unit; do echo "MEM:@k|@v @unit"; done
-        for z in /sys/class/thermal/thermal_zone*; do
-          [ -r "@z/temp" ] || continue
-          t=@(cat "@z/type" 2>/dev/null); v=@(cat "@z/temp" 2>/dev/null)
-          echo "THERMAL:@{z##*thermal_zone}|@t|@v"
-        done
-        if [ -d /data/adb/modules ]; then
-          for m in /data/adb/modules/*; do
-            [ -d "@m" ] || continue
-            id=@{m##*/}; name=@(sed -n 's/^name=//p' "@m/module.prop" 2>/dev/null | head -n 1)
-            ver=@(sed -n 's/^version=//p' "@m/module.prop" 2>/dev/null | head -n 1)
-            [ -n "@name" ] || name=@id
-            state=enabled; [ -e "@m/disable" ] && state=disabled; [ -e "@m/remove" ] && state=pending-remove
-            echo "MODULE:@name|@ver|@state|@id"
-          done
-        fi
-    """.trimIndent().replace("@", "\$")
-
-    val output = runFixedRootCommand(script) { text, code -> if (code == 0) text else "" } ?: return DiagnosticReport(error = "Root command gagal atau timeout")
-    val lines = output.lineSequence().filter { it.isNotBlank() }.toList()
-    fun values(prefix: String) = lines.filter { it.startsWith(prefix) }.map { it.substringAfter(prefix) }
-    val kernel = lines.firstOrNull { it.startsWith("KERNEL:") }?.substringAfter("KERNEL:") ?: "Unknown"
-    val uptimeRaw = lines.firstOrNull { it.startsWith("UPTIME:") }?.substringAfter("UPTIME:") ?: "—"
-    val uptimeSeconds = uptimeRaw.toDoubleOrNull()?.toLong()
-    val uptime = uptimeSeconds?.let { "${it / 3600}h ${(it % 3600) / 60}m" } ?: uptimeRaw
-    val thermal = values("THERMAL:").map { raw ->
-        val p = raw.split('|')
-        val milli = p.getOrNull(2)?.toDoubleOrNull()
-        val temp = milli?.let { if (it > 1000) "%.1f°C".format(Locale.US, it / 1000.0) else "${it}°C" } ?: (p.getOrNull(2) ?: "?")
-        "${p.getOrNull(1) ?: "zone"} · $temp"
-    }.take(12)
-    return DiagnosticReport(
-        success = true,
-        capturedAt = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(Date()),
-        kernel = kernel,
-        uptime = uptime,
-        cpu = values("CPU:"),
-        gpu = values("GPU:"),
-        memory = values("MEM:").map { it.replace('|', ' ') },
-        thermal = thermal,
-        modules = values("MODULE:").map { raw ->
-            val p = raw.split('|'); "${p.getOrNull(0) ?: "Module"} · ${p.getOrNull(1)?.ifBlank { "version unknown" } ?: "version unknown"} · ${p.getOrNull(2) ?: "unknown"} (${p.getOrNull(3) ?: "?"})"
-        }
-    )
-}
-
-private fun <T> runFixedRootCommand(command: String, transform: (String, Int) -> T): T? {
     return try {
-        val process = ProcessBuilder("su", "-c", command).redirectErrorStream(true).start()
-        val finished = process.waitFor(12, TimeUnit.SECONDS)
-        if (!finished) {
-            process.destroyForcibly()
-            null
-        } else {
-            val output = BufferedReader(InputStreamReader(process.inputStream)).use { it.readText().take(24000) }
-            transform(output.trim(), process.exitValue())
+        val url = URL(base.trimEnd('/') + path)
+
+        if (url.protocol != "https") {
+            return false to "HTTPS wajib digunakan"
         }
-    } catch (_: Exception) { null }
-}
+
+        connection = url.openConnection() as HttpURLConnection
+        connection.requestMethod = method
+        connection.connectTimeout = 12000
+        connection.readTimeout = 12000
+        connection.setRequestProperty(
+            "Accept",
+            "application/json"
+        )
+
+        if (method == "POST" && body != null) {
+            connection.doOutput = true
+            connection.setRequestProperty(
+                "Content-Type",
+                "application/json; charset=utf-8"
+            )
+
+            connection.outputStream.use {
+                it.write(body.toByteArray(Charsets.UTF_8))
+            }
+        }
+
+        val code = connection.responseCode
+
+        val stream = if (code in 200..299) {
+  
